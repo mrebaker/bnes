@@ -55,7 +55,11 @@ def notify(c):
         for user in users:
             if user['method'] == "twitter":
                 api = twitapi()
-                api.PostDirectMessage(msgtxt, user['contact'])
+                try:
+                    api.PostDirectMessage(msgtxt, user['contact'])
+                except KeyError:
+                    # error from python-twitter if the bot doesn't follow the recipient
+                    pass
 
             elif user['method'] == "email":
                 email_user = config['email-sender']['username']
@@ -71,7 +75,12 @@ def notify(c):
                 msg['To'] = user['contact']
                 msg['Subject'] = msgtxt
 
-                serv.send_message(msg)
+                try:
+                    serv.send_message(msg)
+                except smtplib.SMTPException as e:
+                    # todo: should retry some errors, and log others
+                    pass
+
                 del msg
             elif user['method'] == "slack":
                 slack_token = config['slack_login']['bot_token']
