@@ -1,62 +1,89 @@
+"""
+BNES: notifies specified people about local waste collections one day in advance.
+"""
+
 from datetime import date, datetime, timedelta
-from email.mime.text import MIMEText
-from lxml import html
 import os
 
+from email.mime.text import MIMEText
+import smtplib
+
+from lxml import html
+import requests
+import yaml
 import slack
 import twitter
-import requests
-import smtplib
-import yaml
+
 
 
 def get_page(url):
+    """
+    Fetches a webpage for a given URL.
+    :param url: URL for the required webpage.
+    :return: A Response object for the request.
+    """
     # todo need some error checking
-    pagecontent = requests.get(url)
-    return pagecontent
+    page_content = requests.get(url)
+    return page_content
 
 
-def get_collections(pagehtml):
-    dateformat = '%A, %d %B %Y'
-    tree = html.fromstring(pagehtml.content)
+def get_collections(page_html):
+    """
+    Parses the HTML to extract the next dates for each type of collection: bin, recycling, green bin
+    Very specific to the webpage layout. Expects iShareMaps which is used by some UK local councils.
+    :param page_html: A Response object which should contain a list of waste collections.
+    :return: A list of dicts with a human readable description of the collection and
+             the date as both datetime and a string.
+    """
+    date_format = '%A, %d %B %Y'
+    tree = html.fromstring(page_html.content)
     trs = tree.xpath("//table[@id='reftab']/*")
-    collist = list()
+    col_list = list()
     for tr in trs:
-        d = dict()
-        coltype = str(tr.xpath("td")[0].xpath("strong/text()")[0]).split(":")[0]
+        col_dict = dict()
+        col_type = str(tr.xpath("td")[0].xpath("strong/text()")[0]).split(":")[0]
         try:
-            # Sometimes the council website doesn't have the date info, in which case skip that collection type
-            coldate = datetime.strptime(tr.xpath("td")[0].xpath("span/text()")[0], dateformat)
+            # Sometimes the council website doesn't have the date info
+            # in which case skip that collection type
+            col_date = datetime.strptime(tr.xpath("td")[0].xpath("span/text()")[0], date_format)
         except IndexError:
             continue
-        d['description'] = coltype.replace("Your next ", "")\
+        col_dict['description'] = col_type.replace("Your next ", "")\
                                   .replace("collection is", "")\
                                   .capitalize()
-        d['date'] = coldate.date()
-        d['date_string'] = coldate.strftime("%a %e")
-        collist.append(d)
-    return collist
+        col_dict['date'] = col_date.date()
+        col_dict['date_string'] = col_date.strftime("%a %e")
+        col_list.append(col_dict)
+    return col_list
 
 
 def load_config():
+    """
+    Loads the local configuration file.
+    :return: An object representing the config file.
+    """
     proj_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(proj_dir, "config.yml")
     conf = yaml.safe_load(open(config_path))
     return conf
 
 
-def notify(c):
-    config = load_config()
+def notify(collection):
+    """
+    Notifies each user of the waste collection using their chosen method: Twitter DM, email, Slack.
+    :param collection: a dict representing the given waste collection
+    :return: nothing
+    """
     users = config['users']
 
-    msgtxt = '{}tomorrow, {}'.format(c['description'], c['date_string'])
+    msg_txt = '{}tomorrow, {}'.format(collection['description'], collection['date_string'])
 
     if config['SEND_NOTIFICATION']:
         for user in users:
             if user['method'] == "twitter":
-                api = twitapi()
+                api = twit_api()
                 try:
-                    api.PostDirectMessage(msgtxt, user['contact'])
+                    api.PostDirectMessage(msg_txt, user['contact'])
                 except KeyError:
                     # error from python-twitter if the bot doesn't follow the recipient
                     pass
@@ -73,13 +100,13 @@ def notify(c):
 
                 msg['From'] = "{} <{}>".format(config['email-sender']['name'], email_user)
                 msg['To'] = user['contact']
-                msg['Subject'] = msgtxt
+                msg['Subject'] = msg_txt
 
                 try:
                     serv.send_message(msg)
-                except smtplib.SMTPException as e:
+                except smtplib.SMTPException as error:
                     # todo: should retry some errors, and log others
-                    pass
+                    print(error)
 
                 del msg
             elif user['method'] == "slack":
@@ -88,20 +115,22 @@ def notify(c):
 
                 response = client.chat_postMessage(
                     channel=user['contact'],
-                    text=msgtxt)
+                    text=msg_txt)
                 assert response["ok"]
     else:
-        print(msgtxt)
+        print(msg_txt)
 
 
-def twitapi():
-    config = load_config()
-
+def twit_api():
+    """
+    A wrapper for logging into the Twitter API
+    :return: an API object
+    """
     api = twitter.Api(config['twitter-api']['consumer_key'],
                       config['twitter-api']['consumer_secret'],
                       config['twitter-api']['access_key'],
                       config['twitter-api']['access_secret'])
-
+    # todo: error checking
     return api
 
 
@@ -111,7 +140,7 @@ if __name__ == '__main__':
     cols = get_collections(page)
 
     tomorrow = date.today() + timedelta(days=1)
-    
+
     for col in cols:
         if config['ignore-date-check'] or col['date'] == tomorrow:
             notify(col)
