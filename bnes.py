@@ -15,7 +15,6 @@ import slack
 import twitter
 
 
-
 def get_page(url):
     """
     Fetches a webpage for a given URL.
