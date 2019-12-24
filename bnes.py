@@ -3,6 +3,7 @@ BNES: notifies specified people about local waste collections one day in advance
 """
 
 from datetime import date, datetime, timedelta
+import logging
 import os
 
 from email.mime.text import MIMEText
@@ -22,8 +23,21 @@ def get_page(url):
     :return: A Response object for the request.
     """
     # todo need some error checking
-    page_content = requests.get(url)
-    return page_content
+
+    r = requests.get(url)
+
+    if r.status_code != 200:
+        log_date = datetime.now().strftime("%Y-%m-%d %H%M%S")
+        filename = f'{log_date} response.html'
+        with open(filename, 'w+') as f:
+            f.write(r.text)
+        logging.critical('get_page failed with status {}. See file {}.'.format(
+            r.status_code,
+            filename
+        ))
+        r.raise_for_status()
+
+    return r
 
 
 def get_collections(page_html):
@@ -135,6 +149,7 @@ def twit_api():
 
 if __name__ == '__main__':
     config = load_config()
+    logging.basicConfig(filename='bnes.log', format='%(asctime)s %(message)s')
     page = get_page(config['target-url'])
     cols = get_collections(page)
 
