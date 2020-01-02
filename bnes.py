@@ -65,7 +65,7 @@ def get_collections(page_html):
             .replace("collection is", "")\
             .capitalize()
         col_dict['date'] = col_date.date()
-        col_dict['date_string'] = col_date.strftime("%a %e")
+        col_dict['date_string'] = f'{col_date.strftime("%a")} {col_date.day}'
         col_list.append(col_dict)
     return col_list
 
