@@ -62,8 +62,8 @@ def get_collections(page_html):
         except IndexError:
             continue
         col_dict['description'] = col_type.replace("Your next ", "")\
-                                  .replace("collection is", "")\
-                                  .capitalize()
+            .replace("collection is", "")\
+            .capitalize()
         col_dict['date'] = col_date.date()
         col_dict['date_string'] = col_date.strftime("%a %e")
         col_list.append(col_dict)
